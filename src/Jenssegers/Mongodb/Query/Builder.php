@@ -492,6 +492,24 @@ class Builder extends BaseBuilder
     }
 
     /**
+     * Add a "where all" clause to the query.
+     *
+     * @param  string  $column
+     * @param  array   $values
+     * @param  string  $boolean
+     * @param  bool    $not
+     * @return $this
+     */
+    public function whereAll($column, array $values, $boolean = 'and', $not = false)
+    {
+        $type = 'all';
+
+        $this->wheres[] = compact('column', 'type', 'boolean', 'values', 'not');
+
+        return $this;
+    }
+
+    /**
      * @inheritdoc
      */
     public function whereBetween($column, array $values, $boolean = 'and', $not = false)
@@ -598,6 +616,28 @@ class Builder extends BaseBuilder
     public function decrement($column, $amount = 1, array $extra = [], array $options = [])
     {
         return $this->increment($column, -1 * $amount, $extra, $options);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function chunkById($count, callable $callback, $column = '_id', $alias = null)
+    {
+        return parent::chunkById($count, $callback, $column, $alias);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function forPageAfterId($perPage = 15, $lastId = 0, $column = '_id')
+    {
+        // When using ObjectIDs to paginate, we need to use a hex string as the
+        // "minimum" ID rather than the integer zero so the '$lt' query works.
+        if ($column === '_id' && $lastId === 0) {
+            $lastId = '000000000000000000000000';
+        }
+
+        return parent::forPageAfterId($perPage, $lastId, $column);
     }
 
     /**
@@ -892,6 +932,12 @@ class Builder extends BaseBuilder
                         $where['value'] = new UTCDateTime($where['value']->getTimestamp() * 1000);
                     }
                 }
+            } elseif (isset($where['values'])) {
+                array_walk_recursive($where['values'], function (&$item, $key) {
+                    if ($item instanceof DateTime) {
+                        $item = new UTCDateTime($item->getTimestamp() * 1000);
+                    }
+                });
             }
 
             // The next item in a "chain" of wheres devices the boolean of the
@@ -921,6 +967,17 @@ class Builder extends BaseBuilder
         }
 
         return $compiled;
+    }
+
+    /**
+     * @param array $where
+     * @return array
+     */
+    protected function compileWhereAll(array $where)
+    {
+        extract($where);
+
+        return [$column => ['$all' => array_values($values)]];
     }
 
     /**
